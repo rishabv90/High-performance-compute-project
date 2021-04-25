@@ -85,23 +85,34 @@ if(x < width && y < height){ //thread divergence here // greyscale
 	float r = rgbImage[rgbOffset];
 	float g = rgbImage[rgbOffset + 1];
 	float b = rgbImage[rgbOffset + 2];
-
-	//grayImage[grayOffset] = 0.21f*r + 0.71f*g + 0.07f*b; //greyscale output image
-
 	
-	float ci1 = atan(r * max(g,b));
-	float ci2 = atan(g * max(r,b));
-	float ci3 = atan(b * max(r,g));
+
+	//CI1 = arctan(R * max(G,B)); CI2 = arctan(G * max(R,B)); CI3 = (B * max(R,G));
+	float ci1 = atan(r / max(g,b));
+	float ci2 = atan(g / max(r,b));
+	float ci3 = atan(b / max(r,g));
+	//float ci3 = b * max(r,g);
+
+	//float ci1 = (r * 0.299) + (g * 0.587) + (b * 0.114);
+	//float ci2 = (r * (-0.168)) + (g * (-0.331264)) + (b * 0.5) + 128;
+	//float ci3 = (r * (0.5)) + (g * (-0.4186)) + (b * (-0.0813)) + 128;
+
+
+	if(ci1<0){ci1=0;}
+	if(ci2<0){ci2=0;}
+	if(ci3<0){ci3=0;}
+	//if(ci2<0){ci2=0;}
+	//__syncthreads();
 
 	yuvImage[rgbOffset] = ci1;
 	yuvImage[rgbOffset + 1] = ci2;
 	yuvImage[rgbOffset + 2] = ci3;
 
 	__syncthreads();
-	
-	grayImage[grayOffset] = 0.21f*ci1 + 0.71f*ci2 + 0.07f*ci3; //greyscale output image
 
+	grayImage[grayOffset] = 0.21f*ci1 + 0.71f*ci2 + 0.07f*ci3; //greyscale output image
 	__syncthreads();
+	
 }
 
 }
