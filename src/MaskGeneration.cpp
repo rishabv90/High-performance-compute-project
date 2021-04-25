@@ -89,6 +89,10 @@ __global__ void cumSumOne(unsigned int* counts, float* omega, unsigned int num_e
     __syncthreads();
     if(i < NUM_BINS)
         omega[i] = XY[tid] / num_elements;
+
+    __syncthreads();
+    printf("OMEGA VALUES\r\n###############\r\n");
+    printf("%f\r\n",omega[i]);
 }
 #endif // CUMULATIVE_SUM_ONE_VERSION
 
@@ -118,14 +122,15 @@ __global__ void cumSumTwo(unsigned int* counts, float* mu, unsigned int num_elem
         __syncthreads();
         int in1 = XY[tid - stride];
         __syncthreads();
-        XY[tid] += in1 * (tid - stride);
-        
+        XY[tid] += in1 * (tid - stride);       
     }
     __syncthreads();
     if(i < NUM_BINS)
         mu[i] = XY[tid] / num_elements;
-	
 
+    __syncthreads();
+    printf("MU VALUES\r\n###############\r\n");
+    printf("%f\r\n",mu[i]);
 }
 #endif // CUMULATIVE_SUM_TWO_VERSION
 
@@ -142,7 +147,15 @@ __global__ void cumSumTwo(unsigned int* counts, float* mu, unsigned int num_elem
 
 #if COMP_SIGMA_B_SQUARED_VERSION == 0
 __global__ void compSigmaBSquared(float* sigma_b_squared, float* omega, float* mu) {
-	__shared__ int shared_omega[NUM_BINS];
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if(i < NUM_BINS){
+        
+        sigma_b_squared[i] = pow(omega[i] - mu[i], 2) / (omega[i] * (1 - omega[i]));
+    }
+
+	/*__shared__ int shared_omega[NUM_BINS];
     __shared__ int shared_mu[NUM_BINS];
     __shared__ int shared_sigma_b_squared[NUM_BINS];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -155,11 +168,15 @@ __global__ void compSigmaBSquared(float* sigma_b_squared, float* omega, float* m
         int omega_val = shared_omega[tid - stride];
         int mu_val = shared_mu[tid - stride];
         __syncthreads();
-        shared_sigma_b_squared[tid] = pow(omega_val - mu_val, 2) / (omega_val * (1 - omega_val));
+        shared_sigma_b_squared[tid] += pow(omega_val - mu_val, 2) / (omega_val * (1 - omega_val));
     }
     __syncthreads();
     if(i < NUM_BINS)
         sigma_b_squared[i] = shared_sigma_b_squared[tid];
+
+    __syncthreads();
+    printf("SIGMA B SQUAred VALUES\r\n###############\r\n");
+    printf("%f\r\n",sigma_b_squared[i]);*/
 }
 #endif // COMP_SIGMA_B_SQUARED_VERSION
 
