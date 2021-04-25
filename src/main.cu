@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
 #endif
 
   //--------- Process 1: YUV Conversion
-  float *hostOutputImageDataYUV = (float*) malloc(imageWidth*imageHeight*sizeof(float));
+  float *hostOutputImageDataYUV = (float*) malloc(imageWidth*imageHeight*imageChannels*sizeof(float));
 
   //--------- Process 1: Color Invariance
   float *hostOutputImageDataColorInvariant = (float*) malloc(imageWidth*imageHeight*imageChannels*sizeof(float));
@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
 
   //--------- Process 1: YUV Conversion
   float *deviceYUVOutputImageData;
-  gpuErrchk(cudaMalloc((void **) &deviceYUVOutputImageData, imageWidth * imageHeight * sizeof(float)));
+  gpuErrchk(cudaMalloc((void **) &deviceYUVOutputImageData, imageWidth * imageHeight * imageChannels * sizeof(float)));
 
   //--------- Process 1: Color Invariance
   float *deviceColorInvariantOutputImageData;
@@ -282,7 +282,7 @@ int main(int argc, char** argv) {
 #elif defined(USE_STREAMING)
   cudaStreamSynchronize(colorspaceStream);
 #endif
-  
+  /*
   //--------- Process 1: Greyscale Conversion, done previously
 
   
@@ -339,8 +339,9 @@ int main(int argc, char** argv) {
   maskErosion<<<dimGridErosion, dimBlockErosion, 0, grayscaleStream>>>(deviceErodedShadow, deviceGreyMaskOutputImageData, deviceStrel, imageWidth, imageHeight, false);
 #else
   maskErosion<<<dimGridErosion, dimBlockErosion>>>(deviceErodedShadow, deviceGreyMaskOutputImageData, deviceStrelShadow, imageWidth, imageHeight, false);
-#endif
+#endif*/
 
+//START HERE
 
 #if defined(USE_STREAM_EVENTS) && defined(USE_STREAMING)
   cudaEventRecord(grayscaleCompleteEvent, grayscaleStream);
@@ -395,14 +396,16 @@ int main(int argc, char** argv) {
 #endif
 
   //--------- Process 3: Smoothing
-  dim3 dimGridSmoothing((imageWidth-1)/16 +1, (imageHeight-1)/16+1, 1);
-  dim3 dimBlockSmoothing(16, 16, 1);
+ /* dim3 dimGridSmoothing((imageWidth-1)/16 +1, (imageHeight-1)/16+1, 1);
+  dim3 dimBlockSmoothing(16, 16, 1);*/
 
 //=======
 #ifdef USE_STREAMING
   //smooth_kernel<<<dimGridSmoothing, dimBlockSmoothing, 0, yuvStream>>>(deviceCBMaskOutputImageData, deviceSmoothOutputImageData, deviceMaskData, 1, imageWidth, imageHeight);
   #if SMOOTH_KERNEL_VERSION == 0
   // 2D Shared Memory, Smoothing Kernel
+  dim3 dimGridSmoothing((imageWidth * 2 - 1)/16 +1, (imageHeight * 2 -1)/16+1, 1);
+  dim3 dimBlockSmoothing(16, 16, 1);
   smooth_kernel<<<dimGridSmoothing, dimBlockSmoothing, 0, yuvStream>>>(deviceCBMaskOutputImageData, deviceSmoothOutputImageData, deviceMaskData, 1, imageWidth, imageHeight);
 
   #elif SMOOTH_KERNEL_VERSION == 1
@@ -419,6 +422,8 @@ int main(int argc, char** argv) {
   //smooth_kernel<<<dimGridSmoothing, dimBlockSmoothing>>>(deviceCBMaskOutputImageData, deviceSmoothOutputImageData, deviceMaskData, 1, imageWidth, imageHeight);
   #if SMOOTH_KERNEL_VERSION == 0
   // 2D Shared Memory, Smoothing Kernel
+  dim3 dimGridSmoothing((imageWidth * 2 - 1)/16 +1, (imageHeight * 2 -1)/16+1, 1);
+  dim3 dimBlockSmoothing(16, 16, 1);
   smooth_kernel<<<dimGridSmoothing, dimBlockSmoothing>>>(deviceCBMaskOutputImageData, deviceSmoothOutputImageData, deviceMaskData, 1, imageWidth, imageHeight);
 
   #elif SMOOTH_KERNEL_VERSION == 1
@@ -429,6 +434,8 @@ int main(int argc, char** argv) {
 
   #elif SMOOTH_KERNEL_VERSION == 2
   // 2D Global Memory, Smoothing Kernel
+  dim3 dimGridSmoothing((imageWidth-1)/16 +1, (imageHeight-1)/16+1, 1);
+  dim3 dimBlockSmoothing(16, 16, 1);
   smooth_kernel_global<<<dimGridSmoothing, dimBlockSmoothing>>>(deviceCBMaskOutputImageData, deviceSmoothOutputImageData, deviceMaskData, 1, imageWidth, imageHeight); 
   #endif
 #endif
@@ -511,7 +518,7 @@ int main(int argc, char** argv) {
 	
   // YUV Data
   gpuErrchk(cudaMemcpy(hostOutputImageDataYUV, deviceYUVOutputImageData,
-             imageWidth * imageHeight * sizeof(float),
+             imageWidth * imageHeight * imageChannels * sizeof(float),
              cudaMemcpyDeviceToHost));
 
   // Greyscale Data
@@ -560,7 +567,7 @@ int main(int argc, char** argv) {
 
   // wbImage_export expects to be exporting wbImages, so anything we want to export, copy its host buffer into a wbImage
   // YUV Image
-  wbImage_t imgOutputYUV = wbImage_new(imageWidth, imageHeight, 1, hostOutputImageDataYUV);
+  wbImage_t imgOutputYUV = wbImage_new(imageWidth, imageHeight, 3, hostOutputImageDataYUV);
 	
   // Grey Scale Image
   wbImage_t imgOutputGreyscale = wbImage_new(imageWidth, imageHeight, 1, hostOutputImageDataGreyScale);

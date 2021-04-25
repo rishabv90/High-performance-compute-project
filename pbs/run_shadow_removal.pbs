@@ -1,46 +1,75 @@
 #!/bin/bash
 
-#PBS -N shadow_removal
-#PBS -W group_list=akoglu
+### script to run an mpi job using 28 cores or less (using only one 28-core node)
+
+### Set the job name
+#PBS -N hw2
+
+### Specify the group for this job
+### List of PI groups available to each user can be found with "va" command
+#PBS -W group_list=ece569
+
+### Set the queue for this job as windfall or standard (adjust ### and #)
 #PBS -q standard
-#PBS -l select=1:ncpus=2:mem=12gb:pcmem=6gb:ngpus=1
-#PBS -l walltime=00:05:00
-#PBS -l cput=00:10:00
 
+### Set the number of nodes, cores and memory that will be used for this job
+### select=1 is the node count, ncpus=28 are the cores in each node, 
+### mem=168gb is memory per node, pcmem=6gb is the memory per core - optional
+
+###PBS -l select=1:ncpus=28:mem=168gb:ngpus1
+#PBS -l select=1:ncpus=2:mem=12gb:ngpus=1
+### Specify "wallclock time", hhh:mm:ss. Required field
+#PBS -l walltime=00:00:10
+
+### Specify total cpu time, hhh:mm:ss. Calculated for you if left out
+### total cputime = walltime * ncpus
+#PBS -l cput=00:00:10
+
+### Load required modules/libraries if needed (openmpi example)
+### Use "module avail" command to list all available modules
 module load openmpi
-module load parallel
 module load cuda91/toolkit/9.1.85
+### set directory for job execution, ~netid = home directory path
 
-cd ${HOME}/ece569-project/build
+#cd ${HOME}/ece569/High-performance-compute-project/build
 
-DATADIR=${HOME}/ece569-project/data
+#DATADIR= ${HOME}/ece569/High-performance-compute-project/data
 
 # Just running shadow removal on the main picture
 
 mpirun -n 1 ./shadow_removal "$DATADIR"/plt4.ppm "$DATADIR"/Output
 
-# Uncomment for profiling
-#parallel "mpirun -n 1 ./shadow_removal" ::: `seq 0 9` 
-#mpirun -n 1 nvprof -f -o gfProfile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/gf.ppm "$DATADIR"/Output/gf
-#mpirun -n 1 nvprof -f -o gfProfile.timeline ./shadow_removal "$DATADIR"/gf.ppm "$DATADIR"/Output/gf
 
-#mpirun -n 1 nvprof -f -o plant_sdProfile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/plant_sd.ppm "$DATADIR"/Output/plant_sd
-#mpirun -n 1 nvprof -f -o plant_sdProfile.timeline ./shadow_removal "$DATADIR"/plant_sd.ppm "$DATADIR"/Output/plant_sd
+###
+###setenv MPI_DSM_DISTRIBUTE
 
-#mpirun -n 1 nvprof -f -o plant2Profile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/plant2.ppm "$DATADIR"/Output/plant2
-#mpirun -n 1 nvprof -f -o plant2Profile.timeline ./shadow_removal "$DATADIR"/plant2.ppm "$DATADIR"/Output/plant2
+### run your executable program with begin and end date and time output
 
-#mpirun -n 1 nvprof -f -o pltProfile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/plt.ppm "$DATADIR"/Output/plt
-#mpirun -n 1 nvprof -f -o pltProfile.timeline ./shadow_removal "$DATADIR"/plt.ppm "$DATADIR"/Output/plt
+#PATHS[0]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/0;
+#PATHS[1]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/1;
+#PATHS[2]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/2;
+#PATHS[3]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/3;
+#PATHS[4]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/4;
+#PATHS[5]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/5;
+#PATHS[6]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/6;
+#PATHS[7]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/7;
+#PATHS[8]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/8;
+#PATHS[9]=/home/u28/fdlpm/ece569/build_dir/ImageColorToGrayscale/Dataset/9;
 
-#mpirun -n 1 nvprof -f -o plt4Profile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/plt4.ppm "$DATADIR"/Output/plt4
-#mpirun -n 1 nvprof -f -o plt4Profile.timeline ./shadow_removal "$DATADIR"/plt4.ppm "$DATADIR"/Output/plt4
 
-#mpirun -n 1 nvprof -f -o plt5Profile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/plt5.ppm "$DATADIR"/Output/plt5
-#mpirun -n 1 nvprof -f -o plt5Profile.timeline ./shadow_removal "$DATADIR"/plt5.ppm "$DATADIR"/Output/plt5
 
-#mpirun -n 1 nvprof -f -o 1020ImageProfile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/1020Image.ppm "$DATADIR"/Output/1020Image
-#mpirun -n 1 nvprof -f -o 1020ImageProfile.timeline ./shadow_removal "$DATADIR"/1020Image.ppm "$DATADIR"/Output/1020Image
 
-#mpirun -n 1 nvprof -f -o 4kImageProfile.metrics --analysis-metrics ./shadow_removal "$DATADIR"/4kImage.ppm "$DATADIR"/Output/4kImage
-#mpirun -n 1 nvprof -f -o 4kImageProfile.timeline ./shadow_removal "$DATADIR"/4kImage.ppm "$DATADIR"/Output/4kImage
+#PATHS[0]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/0
+#PATHS[1]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/1
+#PATHS[2]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/2
+#PATHS[3]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/3
+#PATHS[4]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/4
+#PATHS[5]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/5
+#PATHS[6]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/6
+#PATHS[7]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/7
+#PATHS[8]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/8
+#PATHS[9]=/home/u28/fdlpm/ece569/build_dir/VectorAdd/Dataset/9
+
+
+
+

@@ -93,12 +93,15 @@ if(x < width && y < height){ //thread divergence here // greyscale
 	float ci2 = atan(g * max(r,b));
 	float ci3 = atan(b * max(r,g));
 
-	yuvImage[grayOffset] = ci1;
-	yuvImage[grayOffset + 1] = ci2;
-	yuvImage[grayOffset + 2] = ci3;
+	yuvImage[rgbOffset] = ci1;
+	yuvImage[rgbOffset + 1] = ci2;
+	yuvImage[rgbOffset + 2] = ci3;
 
+	__syncthreads();
 	
-	
+	grayImage[grayOffset] = 0.21f*ci1 + 0.71f*ci2 + 0.07f*ci3; //greyscale output image
+
+	__syncthreads();
 }
 
 }

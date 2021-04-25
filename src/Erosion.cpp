@@ -55,7 +55,7 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
               break;
           }
       }
-      erodedMask[row * width + col] = keepPixel ? inputMask[row * width + col] : 0;
+      erodedMask[row * imageWidth + col] = keepPixel ? inputMask[row * imageWidth + col] : 0;
   }
   
 }
