@@ -1,0 +1,75 @@
+#!/bin/bash
+
+### script to run an mpi job using 28 cores or less (using only one 28-core node)
+
+### Set the job name
+#PBS -N hw2
+
+### Specify the group for this job
+### List of PI groups available to each user can be found with "va" command
+#PBS -W group_list=ece569
+
+### Set the queue for this job as windfall or standard (adjust ### and #)
+#PBS -q standard
+
+### Set the number of nodes, cores and memory that will be used for this job
+### select=1 is the node count, ncpus=28 are the cores in each node, 
+### mem=168gb is memory per node, pcmem=6gb is the memory per core - optional
+
+###PBS -l select=1:ncpus=28:mem=168gb:ngpus1
+#PBS -l select=1:ncpus=2:mem=12gb:ngpus=1
+### Specify "wallclock time", hhh:mm:ss. Required field
+#PBS -l walltime=00:00:10
+
+### Specify total cpu time, hhh:mm:ss. Calculated for you if left out
+### total cputime = walltime * ncpus
+#PBS -l cput=00:00:10
+
+### Load required modules/libraries if needed (openmpi example)
+### Use "module avail" command to list all available modules
+module load openmpi
+module load cuda91/toolkit/9.1.85
+### set directory for job execution, ~netid = home directory path
+
+#cd ${HOME}/ece569-project/build
+
+#DATADIR= ${HOME}/ece569-project/data
+
+# Just running shadow removal on the main picture
+
+mpirun -n 1 ./shadow_removal "$DATADIR"/plt4.ppm "$DATADIR"/Output
+
+
+###
+###setenv MPI_DSM_DISTRIBUTE
+
+### run your executable program with begin and end date and time output
+
+#PATHS[0]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/0;
+#PATHS[1]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/1;
+#PATHS[2]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/2;
+#PATHS[3]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/3;
+#PATHS[4]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/4;
+#PATHS[5]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/5;
+#PATHS[6]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/6;
+#PATHS[7]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/7;
+#PATHS[8]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/8;
+#PATHS[9]=/home/u28/rishv1995/ece569/build_dir/ImageColorToGrayscale/Dataset/9;
+
+
+
+
+#PATHS[0]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/0
+#PATHS[1]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/1
+#PATHS[2]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/2
+#PATHS[3]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/3
+#PATHS[4]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/4
+#PATHS[5]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/5
+#PATHS[6]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/6
+#PATHS[7]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/7
+#PATHS[8]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/8
+#PATHS[9]=/home/u28/rishv1995/ece569/build_dir/VectorAdd/Dataset/9
+
+
+
+
