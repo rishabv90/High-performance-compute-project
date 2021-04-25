@@ -1,0 +1,14 @@
+#!/bin/bash
+
+#PBS -N catch2-runner
+#PBS -W group_list=akoglu
+#PBS -q standard
+#PBS -l select=1:ncpus=2:mem=12gb:pcmem=6gb:ngpus=1
+#PBS -l walltime=00:05:00
+#PBS -l cput=00:10:00
+
+module load cuda91/toolkit/9.1.85
+
+cd ${HOME}/ece569-project/test
+
+./test-runner

@@ -1,0 +1,6 @@
+proc 1
+3 kernels single kernel
+2597.24us vs 1213.01 = 2.14x faster
+
+no diverge reduce vs reverse reduce
+336.751us vs 153.126us = 2.199x faster
