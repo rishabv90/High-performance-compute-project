@@ -93,9 +93,23 @@ if(x < width && y < height){ //thread divergence here // greyscale
 	float ci3 = atan(b / max(r,g));
 	//float ci3 = b * max(r,g);
 
-	//float ci1 = (r * 0.299) + (g * 0.587) + (b * 0.114);
-	//float ci2 = (r * (-0.168)) + (g * (-0.331264)) + (b * 0.5) + 128;
-	//float ci3 = (r * (0.5)) + (g * (-0.4186)) + (b * (-0.0813)) + 128;
+	/*float yuv1 = (r * 0.299) + (g * 0.587) + (b * 0.114) + 16;
+	float yuv2 = (r * (-0.168)) + (g * (-0.331264)) + (b * 0.5) + 128;
+	float yuv3 = (r * (0.5)) + (g * (-0.4186)) + (b * (-0.0813)) + 128;*/
+
+	//float yuv1 = 16 + (65.481 * r + 128.553 * g)
+	/*float fr = r / 255;//(float)r / 255;
+	float fg = g;//(float)g / 255;
+	float fb = b;//(float)b / 255;*/
+
+	double fr = 255 * pow(r/255,1/2.2);
+	double fg = 255 * pow(g/255,1/2.2);
+	double fb = 255 * pow(b/255,1/2.2);
+
+
+	float Y = 0.299*r + 0.587*g + 0.114*b;
+	float U = -0.169*r -0.331*g +0.5*b +128;
+	float V = 0.5*r - 0.419*g - 0.081*b + 128;
 
 
 	if(ci1<0){ci1=0;}
@@ -104,9 +118,9 @@ if(x < width && y < height){ //thread divergence here // greyscale
 	//if(ci2<0){ci2=0;}
 	//__syncthreads();
 
-	yuvImage[rgbOffset] = ci1;
-	yuvImage[rgbOffset + 1] = ci2;
-	yuvImage[rgbOffset + 2] = ci3;
+	yuvImage[rgbOffset] = Y;
+	yuvImage[rgbOffset + 1] = U;
+	yuvImage[rgbOffset + 2] = V;
 
 	__syncthreads();
 

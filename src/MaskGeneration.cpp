@@ -2,6 +2,7 @@
 #define MASK_GENERATION_CPP
 
 #include <math.h>
+#include <cuda_fp16.h>
 
 #define NUM_BINS 256 			// Every image we deal with should be 8-bit unsigned
 #define MAX_LOOK_BACK 3			// The number of bins we go in each direction to find the max
@@ -39,10 +40,21 @@
 #if HISTOGRAM_VERSION == 0
 __global__ void histogramKernel(float *input, unsigned int *bins, unsigned int num_elements) {
 
+    /*int i = blockIdx.x * blockDim.x + threadIdx.x; //Get initial index based on thread id
+    int stride = blockDim.x * gridDim.x; //Get stride value
+    int valuesPerBin = (int)(ceil((float)(num_elements / NUM_BINS)));
+
+    while(i < num_elements){ //Iterate over elements that this thread will process and increment histogram accordingly
+        int index = input[i] / valuesPerBin;
+        printf("\r\ni: %d, index: %d\r\n", i, index);
+        atomicAdd(&(bins[index]),1);
+        i += stride;
+    }*/
     int i = blockIdx.x * blockDim.x + threadIdx.x; //Get initial index based on thread id
     int stride = blockDim.x * gridDim.x; //Get stride value
+    printf("\r\n%f\r\n", input[i]);
     while(i < num_elements){ //Iterate over elements that this thread will process and increment histogram accordingly
-        atomicAdd(&(bins[(int)input[i]]),1);
+        atomicAdd(&(bins[(int)(input[i * 3 + 1])]),1);
         i += stride;
     }
 }
@@ -54,10 +66,16 @@ __global__ void histogramKernel(float *input, unsigned int *bins, unsigned int n
 #elif HISTOGRAM_VERSION == 2
 __global__ void histogramKernel(float *input, unsigned int *bins, unsigned int num_elements) { 
 
-	
-
 }
 #endif // HISTOGRAM_VERSION
+
+__global__ void histogramSumKernel(unsigned int *bins, unsigned int *countsSum){
+    int i = blockIdx.x * blockDim.x + threadIdx.x; //Get initial index based on thread id
+    if(i < NUM_BINS){ //Iterate over elements that this thread will process and increment histogram accordingly
+        printf("\r\nbins[%d]: %d\r\n",i, bins[i]);
+        atomicAdd(countsSum,bins[i]);
+    }
+}
 
 /*
  * cumSumOne: Cumulative sum operation, the same as the scan operation 
@@ -73,12 +91,35 @@ __global__ void histogramKernel(float *input, unsigned int *bins, unsigned int n
 #define CUMULATIVE_SUM_ONE_VERSION 0	// Control which version is implemented
 
 #if CUMULATIVE_SUM_ONE_VERSION == 0
-__global__ void cumSumOne(unsigned int* counts, float* omega, unsigned int num_elements) {
+__global__ void cumSumOne(unsigned int* counts, float* omega, unsigned int num_elements, unsigned int* countsSum) {
+
+
+   /*__shared__ float temp[NUM_BINS * 2]; // allocated on invocation    
+   int thid = threadIdx.x;   
+   int pout = 0, 
+   pin = 1;   
+   // Load input into shared memory.    
+   // This is exclusive scan, so shift right by one    
+   // and set first element to 0   
+   temp[pout*NUM_BINS + thid] = (thid > 0) ? counts[thid-1] : 0;   
+   __syncthreads();   
+   for (int offset = 1; offset < NUM_BINS; offset *= 2)   {     
+       pout = 1 - pout; // swap double buffer indices     
+       pin = 1 - pout;     
+       if (thid >= offset)       
+       temp[pout*NUM_BINS+thid] += temp[pin*NUM_BINS+thid - offset];     
+       else       
+       temp[pout*NUM_BINS+thid] = temp[pin*NUM_BINS+thid];     
+       __syncthreads();   
+       }   
+       omega[thid] = temp[pout*NUM_BINS+thid] / num_elements; // write output */
+       
+    
 	__shared__ int XY[NUM_BINS];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
     if(i < NUM_BINS)
-        XY[tid] = counts[i];
+        XY[tid] = counts[i] / *countsSum;
     for(int stride = 1; stride <= tid; stride = stride * 2){
         __syncthreads();
         int in1 = XY[tid - stride];
@@ -88,11 +129,13 @@ __global__ void cumSumOne(unsigned int* counts, float* omega, unsigned int num_e
     }
     __syncthreads();
     if(i < NUM_BINS)
-        omega[i] = XY[tid] / num_elements;
+        omega[i] = XY[tid];
 
     __syncthreads();
+    if(i == 0)
     printf("OMEGA VALUES\r\n###############\r\n");
-    printf("%f\r\n",omega[i]);
+    printf("omega[%d]: %f\r\n",i,omega[i]);
+
 }
 #endif // CUMULATIVE_SUM_ONE_VERSION
 
@@ -112,25 +155,47 @@ __global__ void cumSumOne(unsigned int* counts, float* omega, unsigned int num_e
 #define CUMULATIVE_SUM_TWO_VERSION 0	// Control which version is implemented
 
 #if CUMULATIVE_SUM_TWO_VERSION == 0
-__global__ void cumSumTwo(unsigned int* counts, float* mu, unsigned int num_elements) {
+__global__ void cumSumTwo(unsigned int* counts, float* mu, unsigned int num_elements, unsigned int* countsSum) {
+
+   /*__shared__ float temp[NUM_BINS * 2]; // allocated on invocation    
+   int thid = threadIdx.x;   
+   int pout = 0, 
+   pin = 1;   
+   // Load input into shared memory.    
+   // This is exclusive scan, so shift right by one    
+   // and set first element to 0   
+   temp[pout*NUM_BINS + thid] = (thid > 0) ? counts[thid-1] : 0;   
+   __syncthreads();   
+   for (int offset = 1; offset < NUM_BINS; offset *= 2)   {     
+       pout = 1 - pout; // swap double buffer indices     
+       pin = 1 - pout;     
+       if (thid >= offset)       
+       temp[pout*NUM_BINS+thid] += temp[pin*NUM_BINS+thid - offset] * (pin*NUM_BINS+thid - offset);     
+       else       
+       temp[pout*NUM_BINS+thid] = temp[pin*NUM_BINS+thid];     
+       __syncthreads();   
+       }   
+       mu[thid] = temp[pout*NUM_BINS+thid] / num_elements; // write output */
+
 	__shared__ int XY[NUM_BINS];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
     if(i < NUM_BINS)
-        XY[tid] = counts[i];
+        XY[tid] = (counts[i] / *countsSum) * i;
     for(int stride = 1; stride <= tid; stride = stride * 2){
         __syncthreads();
         int in1 = XY[tid - stride];
         __syncthreads();
-        XY[tid] += in1 * (tid - stride);       
+        XY[tid] += in1;       
     }
     __syncthreads();
     if(i < NUM_BINS)
-        mu[i] = XY[tid] / num_elements;
+        mu[i] = XY[tid];
 
     __syncthreads();
+    if(i == 0)
     printf("MU VALUES\r\n###############\r\n");
-    printf("%f\r\n",mu[i]);
+    printf("mu[%d]: %f\r\n",i, mu[i]);
 }
 #endif // CUMULATIVE_SUM_TWO_VERSION
 
@@ -149,10 +214,11 @@ __global__ void cumSumTwo(unsigned int* counts, float* mu, unsigned int num_elem
 __global__ void compSigmaBSquared(float* sigma_b_squared, float* omega, float* mu) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    
+    //(mu_t * omega - mu).^2 ./ (omega .* (1 - omega));
     if(i < NUM_BINS){
         
-        sigma_b_squared[i] = pow(omega[i] - mu[i], 2) / (omega[i] * (1 - omega[i]));
+        sigma_b_squared[i] = pow(mu[NUM_BINS - 1] * omega[i] - mu[i], 2) / (omega[i] * (1 - omega[i]));
+        printf("\r\nSigma b squared: %f\r\n",sigma_b_squared[i]);
     }
 
 	/*__shared__ int shared_omega[NUM_BINS];
@@ -229,8 +295,11 @@ __global__ void argmax(float* retId, float* input) {
 __global__ void maskGeneration(float* input, float* output, float* threshold, int width, int height, int subtractVal) {
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
+    float thresholdValue = isnan(*threshold) ? 0 : *threshold;
     if(col >= 0 && col < width && row >= 0 && row < height)
-    output[row * width + col] = input[row * width + col] > *threshold ? input[row * width + col] : input[row * width + col] - subtractVal;
+    output[row * width + col] = input[row * width + col] > thresholdValue ? 255 : 0;
+    if(col == 0 && row == 0)
+    printf("\r\nThreshold: %f\r\n",*threshold);
 }
 #endif // MASK_GENERATION_VERSION
 

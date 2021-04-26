@@ -157,6 +157,7 @@ int main(int argc, char** argv) {
   //--------- Process 2: YUV Masking
   float *deviceCBMaskOutputImageData;
   unsigned int *deviceCbBins;
+  unsigned int *histogramSum;
   float *deviceGrayOmega;
   float *deviceCbOmega;
   float *deviceGrayMu;
@@ -168,6 +169,7 @@ int main(int argc, char** argv) {
   
   gpuErrchk(cudaMalloc((void **)&deviceCBMaskOutputImageData, imageWidth * imageHeight * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceCbBins, NUM_BINS * sizeof(int)));
+  gpuErrchk(cudaMalloc((void **)&histogramSum, sizeof(int)));
   gpuErrchk(cudaMalloc((void **)&deviceGrayOmega, NUM_BINS * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceCbOmega, NUM_BINS * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceGrayMu, NUM_BINS * sizeof(float)));
@@ -360,18 +362,21 @@ int main(int argc, char** argv) {
   histogramKernel<<<dimGridHisto, dimBlockHisto>>>(deviceYUVOutputImageData, deviceCbBins, imageWidth * imageHeight);
 #endif
 
+histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, histogramSum);
+
+
   //--------- Process 2: YUV Masking
 #ifdef USE_STREAMING
-  cumSumOne<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight);
+  cumSumOne<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight, histogramSum);
 #else
-  cumSumOne<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight);
+  cumSumOne<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight, histogramSum);
 #endif
 
   //--------- Process 2: YUV Masking
 #ifdef USE_STREAMING
-  cumSumTwo<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight);
+  cumSumTwo<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight, histogramSum);
 #else
-  cumSumTwo<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight);
+  cumSumTwo<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight, histogramSum);
 #endif
 
   //--------- Process 2: YUV Masking
