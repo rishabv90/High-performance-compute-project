@@ -39,22 +39,11 @@
 
 #if HISTOGRAM_VERSION == 0
 __global__ void histogramKernel(float *input, unsigned int *bins, unsigned int num_elements) {
-
-    /*int i = blockIdx.x * blockDim.x + threadIdx.x; //Get initial index based on thread id
-    int stride = blockDim.x * gridDim.x; //Get stride value
-    int valuesPerBin = (int)(ceil((float)(num_elements / NUM_BINS)));
-
-    while(i < num_elements){ //Iterate over elements that this thread will process and increment histogram accordingly
-        int index = input[i] / valuesPerBin;
-        printf("\r\ni: %d, index: %d\r\n", i, index);
-        atomicAdd(&(bins[index]),1);
-        i += stride;
-    }*/
     int i = blockIdx.x * blockDim.x + threadIdx.x; //Get initial index based on thread id
     int stride = blockDim.x * gridDim.x; //Get stride value
-    printf("\r\n%f\r\n", input[i]);
+    //printf("\r\n%d\r\n", (int)(input[i * 3 + 1] * 255));
     while(i < num_elements){ //Iterate over elements that this thread will process and increment histogram accordingly
-        atomicAdd(&(bins[(int)(input[i * 3 + 1])]),1);
+        atomicAdd(&(bins[(int)(input[i * 3 + 1] * 255)]),1);
         i += stride;
     }
 }
@@ -72,7 +61,8 @@ __global__ void histogramKernel(float *input, unsigned int *bins, unsigned int n
 __global__ void histogramSumKernel(unsigned int *bins, unsigned int *countsSum){
     int i = blockIdx.x * blockDim.x + threadIdx.x; //Get initial index based on thread id
     if(i < NUM_BINS){ //Iterate over elements that this thread will process and increment histogram accordingly
-        printf("\r\nbins[%d]: %d\r\n",i, bins[i]);
+        //printf("\r\nHISTOGRAM SUM KERNEL\r\n##############\r\n");
+        //printf("\r\nbins[%d]: %d\r\n",i, bins[i]);
         atomicAdd(countsSum,bins[i]);
     }
 }
@@ -93,48 +83,25 @@ __global__ void histogramSumKernel(unsigned int *bins, unsigned int *countsSum){
 #if CUMULATIVE_SUM_ONE_VERSION == 0
 __global__ void cumSumOne(unsigned int* counts, float* omega, unsigned int num_elements, unsigned int* countsSum) {
 
-
-   /*__shared__ float temp[NUM_BINS * 2]; // allocated on invocation    
-   int thid = threadIdx.x;   
-   int pout = 0, 
-   pin = 1;   
-   // Load input into shared memory.    
-   // This is exclusive scan, so shift right by one    
-   // and set first element to 0   
-   temp[pout*NUM_BINS + thid] = (thid > 0) ? counts[thid-1] : 0;   
-   __syncthreads();   
-   for (int offset = 1; offset < NUM_BINS; offset *= 2)   {     
-       pout = 1 - pout; // swap double buffer indices     
-       pin = 1 - pout;     
-       if (thid >= offset)       
-       temp[pout*NUM_BINS+thid] += temp[pin*NUM_BINS+thid - offset];     
-       else       
-       temp[pout*NUM_BINS+thid] = temp[pin*NUM_BINS+thid];     
-       __syncthreads();   
-       }   
-       omega[thid] = temp[pout*NUM_BINS+thid] / num_elements; // write output */
-       
-    
-	__shared__ int XY[NUM_BINS];
+	__shared__ float XY[NUM_BINS];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
     if(i < NUM_BINS)
-        XY[tid] = counts[i] / *countsSum;
+        XY[tid] = (float)((float)counts[i] / (float)*countsSum);
     for(int stride = 1; stride <= tid; stride = stride * 2){
         __syncthreads();
-        int in1 = XY[tid - stride];
+        float in1 = XY[tid - stride];
         __syncthreads();
         XY[tid] += in1;
-        
     }
     __syncthreads();
     if(i < NUM_BINS)
         omega[i] = XY[tid];
 
-    __syncthreads();
-    if(i == 0)
-    printf("OMEGA VALUES\r\n###############\r\n");
-    printf("omega[%d]: %f\r\n",i,omega[i]);
+  // __syncthreads();
+    //if(i == 0)
+    //printf("OMEGA VALUES\r\n###############\r\n");
+    //printf("omega[%d]: %f\r\n",i,omega[i]);
 
 }
 #endif // CUMULATIVE_SUM_ONE_VERSION
@@ -157,34 +124,14 @@ __global__ void cumSumOne(unsigned int* counts, float* omega, unsigned int num_e
 #if CUMULATIVE_SUM_TWO_VERSION == 0
 __global__ void cumSumTwo(unsigned int* counts, float* mu, unsigned int num_elements, unsigned int* countsSum) {
 
-   /*__shared__ float temp[NUM_BINS * 2]; // allocated on invocation    
-   int thid = threadIdx.x;   
-   int pout = 0, 
-   pin = 1;   
-   // Load input into shared memory.    
-   // This is exclusive scan, so shift right by one    
-   // and set first element to 0   
-   temp[pout*NUM_BINS + thid] = (thid > 0) ? counts[thid-1] : 0;   
-   __syncthreads();   
-   for (int offset = 1; offset < NUM_BINS; offset *= 2)   {     
-       pout = 1 - pout; // swap double buffer indices     
-       pin = 1 - pout;     
-       if (thid >= offset)       
-       temp[pout*NUM_BINS+thid] += temp[pin*NUM_BINS+thid - offset] * (pin*NUM_BINS+thid - offset);     
-       else       
-       temp[pout*NUM_BINS+thid] = temp[pin*NUM_BINS+thid];     
-       __syncthreads();   
-       }   
-       mu[thid] = temp[pout*NUM_BINS+thid] / num_elements; // write output */
-
-	__shared__ int XY[NUM_BINS];
+	__shared__ float XY[NUM_BINS];
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
     if(i < NUM_BINS)
-        XY[tid] = (counts[i] / *countsSum) * i;
+        XY[tid] = (float)((float)counts[i] / (float)*countsSum) * (float)i;
     for(int stride = 1; stride <= tid; stride = stride * 2){
         __syncthreads();
-        int in1 = XY[tid - stride];
+        float in1 = XY[tid - stride];
         __syncthreads();
         XY[tid] += in1;       
     }
@@ -192,10 +139,10 @@ __global__ void cumSumTwo(unsigned int* counts, float* mu, unsigned int num_elem
     if(i < NUM_BINS)
         mu[i] = XY[tid];
 
-    __syncthreads();
-    if(i == 0)
-    printf("MU VALUES\r\n###############\r\n");
-    printf("mu[%d]: %f\r\n",i, mu[i]);
+    //__syncthreads();
+    //if(i == 0)
+    //printf("MU VALUES\r\n###############\r\n");
+    //printf("mu[%d]: %f\r\n",i, mu[i]);
 }
 #endif // CUMULATIVE_SUM_TWO_VERSION
 
@@ -216,33 +163,10 @@ __global__ void compSigmaBSquared(float* sigma_b_squared, float* omega, float* m
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     //(mu_t * omega - mu).^2 ./ (omega .* (1 - omega));
     if(i < NUM_BINS){
-        
-        sigma_b_squared[i] = pow(mu[NUM_BINS - 1] * omega[i] - mu[i], 2) / (omega[i] * (1 - omega[i]));
-        printf("\r\nSigma b squared: %f\r\n",sigma_b_squared[i]);
+        float value = pow(mu[NUM_BINS - 1] * omega[i] - mu[i], 2) / (omega[i] * (1 - omega[i]));
+        sigma_b_squared[i] = isfinite(value) ? value : 0.0;
+        //printf("\r\nSigma b squared[%d]: %f\r\n",i,sigma_b_squared[i]);
     }
-
-	/*__shared__ int shared_omega[NUM_BINS];
-    __shared__ int shared_mu[NUM_BINS];
-    __shared__ int shared_sigma_b_squared[NUM_BINS];
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int tid = threadIdx.x;
-    if(i < NUM_BINS)
-        shared_omega[tid] = omega[i];
-        shared_mu[tid] = mu[i];
-    for(int stride = 1; stride <= tid; stride = stride * 2){
-        __syncthreads();
-        int omega_val = shared_omega[tid - stride];
-        int mu_val = shared_mu[tid - stride];
-        __syncthreads();
-        shared_sigma_b_squared[tid] += pow(omega_val - mu_val, 2) / (omega_val * (1 - omega_val));
-    }
-    __syncthreads();
-    if(i < NUM_BINS)
-        sigma_b_squared[i] = shared_sigma_b_squared[tid];
-
-    __syncthreads();
-    printf("SIGMA B SQUAred VALUES\r\n###############\r\n");
-    printf("%f\r\n",sigma_b_squared[i]);*/
 }
 #endif // COMP_SIGMA_B_SQUARED_VERSION
 
@@ -265,6 +189,11 @@ __global__ void compSigmaBSquared(float* sigma_b_squared, float* omega, float* m
 __global__ void argmax(float* retId, float* input) {
     
     float max = input[0];
+    int count = 0;
+    int sum = 0;
+
+    float idx = 0.0;
+    float level = 0.0;
 
     for(int i = 0; i < NUM_BINS; i++){
         if(input[i] > max){
@@ -272,7 +201,17 @@ __global__ void argmax(float* retId, float* input) {
         }
     }
 
-    *retId = max;
+    for(int i = 0; i < NUM_BINS; i++){
+        if(input[i] == max){
+            sum += i;
+            count += 1;
+        }
+    }
+    idx = (float)sum / (float)count;
+
+    level = (idx - 1) / (NUM_BINS - 1);
+
+    *retId = level;
 }
 
 #elif ARGMAX_VERSION == 1
@@ -289,17 +228,25 @@ __global__ void argmax(float* retId, float* input) {
  * 	- Pretty vanilla. Should look to see if warp divergence is an issue.
  */
 
+
 #define MASK_GENERATION_VERSION 0	// Control which version is implemented
 
 #if MASK_GENERATION_VERSION == 0
 __global__ void maskGeneration(float* input, float* output, float* threshold, int width, int height, int subtractVal) {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
+	unsigned int col = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int row = blockIdx.y * blockDim.y + threadIdx.y;
     float thresholdValue = isnan(*threshold) ? 0 : *threshold;
-    if(col >= 0 && col < width && row >= 0 && row < height)
-    output[row * width + col] = input[row * width + col] > thresholdValue ? 255 : 0;
-    if(col == 0 && row == 0)
+    if(col >= 0 && col < width && row >= 0 && row < height){
+    output[row * width + col] = input[(row * width + col) * 3 + 1] > thresholdValue ? 1 : 0;
+    /*if(col == 0 && row == 0){
     printf("\r\nThreshold: %f\r\n",*threshold);
+    printf("\r\nSubtract value: %f\r\n",subtractVal);
+    }
+    if(output[row * width + col] == 0){
+    printf("\r\ninput[%d,%d] %f\r\n",col,row, input[(row * width + col) * 3 + 1]);
+    printf("\r\noutput[%d,%d] %f\r\n",col,row, output[row * width + col]);
+    }*/
+    }
 }
 #endif // MASK_GENERATION_VERSION
 

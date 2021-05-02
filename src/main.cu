@@ -344,7 +344,12 @@ int main(int argc, char** argv) {
 #endif*/
 
 //START HERE
-
+// Erosion images
+cudaEvent_t astartEvent, astopEvent;
+float aelapsedTime;
+cudaEventCreate(&astartEvent);
+cudaEventCreate(&astopEvent);
+cudaEventRecord(astartEvent, 0);
 #if defined(USE_STREAM_EVENTS) && defined(USE_STREAMING)
   cudaEventRecord(grayscaleCompleteEvent, grayscaleStream);
   cudaStreamWaitEvent(yuvStream, colorspaceCompleteEvent, 0);
@@ -551,6 +556,7 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, histogramSum
 	           cudaMemcpyDeviceToHost));
 
   // Light-mask erosion data
+
   gpuErrchk(cudaMemcpy(hostOutputImageErodedLight, deviceErodedLight,
              imageWidth * imageHeight * sizeof(float),
              cudaMemcpyDeviceToHost));
@@ -589,9 +595,18 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, histogramSum
   wbImage_t resultImage = wbImage_new(imageWidth, imageHeight, imageChannels, hostResultImageData);
 
 	
-  // Erosion images
+  
   wbImage_t imgOutputLightMaskErosion = wbImage_new(imageWidth, imageHeight, 1, hostOutputImageErodedLight);
+
+
   wbImage_t imgOutputShadowMaskErosion = wbImage_new(imageWidth, imageHeight, 1, hostOutputImageErodedShadow);
+
+  cudaDeviceSynchronize();
+  cudaEventRecord(astopEvent, 0);
+  cudaEventSynchronize(astopEvent);
+  cudaEventElapsedTime(&aelapsedTime, astartEvent, astopEvent);
+  printf("Total execution time (ms) %f for light mask erosion \n",aelapsedTime);
+
 
   // Output Image Path Strings
   std::string yuvOutputPath = baseOutputDir + "Proc1_OutputYUV.ppm";

@@ -77,42 +77,61 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
 
 __global__ void maskErosion(float* erodedMask, float* inputMask, float* structuralElement, int imageWidth, int imageHeight, bool doLightMask) {
   
-  __shared__ float shared_inputMask[PADDED_DIM][PADDED_DIM];
+    __shared__ unsigned char shared_inputMask[PADDED_DIM][PADDED_DIM];
 
-  int col = blockIdx.x * blockDim.x + threadIdx.x;
-  int row = blockIdx.y * blockDim.y + threadIdx.y;
- 
-  if(col < imageWidth && row < imageHeight){
-      bool keepPixel = true;
-      int start_col = col - MASK_RADIUS;
-      int start_row = row - MASK_RADIUS;
-      for(int j = 0; j < MASK_WIDTH; ++j){
-          for(int k = 0; k < MASK_WIDTH; ++k){
-              int current_row = start_row + j;
-              int current_col = start_col + k;
-              if(current_row > -1 && current_row < imageHeight && current_col > -1 && current_col < imageWidth){
-                  float current_value = inputMask[current_row * imageWidth + current_col];
-                  float structural_element_value = structuralElement[j * MASK_WIDTH + k];
-                  if(doLightMask){
-                      structural_element_value = 1 - structural_element_value;
-                  }
-                  if(current_value != structural_element_value){
-                      keepPixel = false;
-                      break;
-                  }
-              }
+    int ty = threadIdx.y;
+    int tx = threadIdx.x;
+
+
+    int row = blockIdx.y * TILE_DIM + ty;
+    int col = blockIdx.x * TILE_DIM + tx;
+
+
+    int start_row = row - MASK_RADIUS;
+    int start_col = col - MASK_RADIUS;
+
+    if((start_row >= 0) && (start_row < imageHeight) && (start_col >= 0) && (start_col < imageWidth) ){
+
+        shared_inputMask[ty][tx] = inputMask[ start_row * imageWidth + start_col];
+
+    }
+    else{
+
+        shared_inputMask[ty][tx] = 0;
+
+    }
+    __syncthreads();
+
+    if( ty < TILE_DIM && tx < TILE_DIM ){
+        bool keepPixel = true;
+        for(int i = 0; i < MASK_WIDTH; i++) {
+            for(int j = 0; j < MASK_WIDTH; j++) {
+              
+                float current_value = shared_inputMask[i+ty][j+tx] ;
+                float structural_element_value = structuralElement[i * MASK_WIDTH + j];
+                if(doLightMask){
+                    structural_element_value = 1 - structural_element_value;
+                }
+                if(current_value != structural_element_value){
+                    keepPixel = false;
+                    break;
+                }
+              
               else{
                   keepPixel = false;
                   break;
               }
-          }
-          if(!keepPixel){
+            }
+            if(!keepPixel){
               break;
-          }
-      }
-      erodedMask[row * width + col] = keepPixel ? inputMask[row * width + col] : 0;
-  }
-}
+            }
+        }
+        if(row < imageHeight && col < imageWidth)
+                erodedMask[row * imageWidth + col] = keepPixel ? inputMask[row * imageWidth + col] : 0;
+
+        }
+
+     }
 #endif
 
 #if EROSION_VERSION==3
@@ -130,7 +149,59 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
 
 __global__ void maskErosion(float* erodedMask, float* inputMask, const float* __restrict__ structuralElement, int imageWidth, int imageHeight, bool doLightMask) {
 
-  
+   __shared__ unsigned char shared_inputMask[PADDED_DIM][PADDED_DIM];
+
+    int ty = threadIdx.y;
+    int tx = threadIdx.x;
+
+
+    int row = blockIdx.y * TILE_DIM + ty;
+    int col = blockIdx.x * TILE_DIM + tx;
+
+
+    int start_row = row - MASK_RADIUS;
+    int start_col = col - MASK_RADIUS;
+
+    if((start_row >= 0) && (start_row < imageHeight) && (start_col >= 0) && (start_col < imageWidth) ){
+
+        shared_inputMask[ty][tx] = inputMask[ start_row * imageWidth + start_col];
+
+    }
+    else{
+
+        shared_inputMask[ty][tx] = 0;
+
+    }
+    __syncthreads();
+
+    if( ty < TILE_DIM && tx < TILE_DIM ){
+        bool keepPixel = true;
+        for(int i = 0; i < MASK_WIDTH; i++) {
+            for(int j = 0; j < MASK_WIDTH; j++) {
+              
+                float current_value = shared_inputMask[i+ty][j+tx] ;
+                float structural_element_value = structuralElement[i * MASK_WIDTH + j];
+                if(doLightMask){
+                    structural_element_value = 1 - structural_element_value;
+                }
+                if(current_value != structural_element_value){
+                    keepPixel = false;
+                    break;
+                }
+              
+              else{
+                  keepPixel = false;
+                  break;
+              }
+            }
+            if(!keepPixel){
+              break;
+            }
+        }
+        if(row < imageHeight && col < imageWidth)
+                erodedMask[row * imageWidth + col] = keepPixel ? inputMask[row * imageWidth + col] : 0;
+
+        }  
 }
 
 #endif
