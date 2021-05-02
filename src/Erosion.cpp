@@ -37,10 +37,12 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
               int current_col = start_col + k;
               if(current_row > -1 && current_row < imageHeight && current_col > -1 && current_col < imageWidth){
                   float current_value = inputMask[current_row * imageWidth + current_col];
-                  float structural_element_value = structuralElement[j * MASK_WIDTH + k];
+                  float previous_value = -1;
                   if(doLightMask){
-                      structural_element_value = 1 - structural_element_value;
+                      previous_value = current_value;
+                      current_value = current_value == 0 ? 1 : 0;
                   }
+                  float structural_element_value = structuralElement[j * MASK_WIDTH + k];
                   if(current_value != structural_element_value){
                       keepPixel = false;
                       break;
@@ -55,7 +57,7 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
               break;
           }
       }
-      erodedMask[row * imageWidth + col] = keepPixel ? inputMask[row * imageWidth + col] : 0;
+      erodedMask[row * imageWidth + col] = keepPixel ? (doLightMask ? (inputMask[row * imageWidth + col] == 0 ? 1 : 0) : inputMask[row * imageWidth + col]) : 0;
   }
   
 }
@@ -108,10 +110,10 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
             for(int j = 0; j < MASK_WIDTH; j++) {
               
                 float current_value = shared_inputMask[i+ty][j+tx] ;
-                float structural_element_value = structuralElement[i * MASK_WIDTH + j];
                 if(doLightMask){
-                    structural_element_value = 1 - structural_element_value;
+                      current_value = 1 - current_value;
                 }
+                float structural_element_value = structuralElement[i * MASK_WIDTH + j];
                 if(current_value != structural_element_value){
                     keepPixel = false;
                     break;
@@ -180,10 +182,10 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, const float* __
             for(int j = 0; j < MASK_WIDTH; j++) {
               
                 float current_value = shared_inputMask[i+ty][j+tx] ;
-                float structural_element_value = structuralElement[i * MASK_WIDTH + j];
                 if(doLightMask){
-                    structural_element_value = 1 - structural_element_value;
-                }
+                      current_value = 1 - current_value;
+                  }
+                float structural_element_value = structuralElement[i * MASK_WIDTH + j];
                 if(current_value != structural_element_value){
                     keepPixel = false;
                     break;

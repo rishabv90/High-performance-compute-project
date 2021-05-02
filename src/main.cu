@@ -31,11 +31,11 @@ inline void gpuAssert(cudaError_t errCode, const char *file, int line, bool abor
 
 static const int erosionStrelWidth = 5, erosionStrelHeight = 5;
 static const float hostErosionStrel[erosionStrelHeight][erosionStrelWidth] = {
-  {0, 1, 1, 1, 0},
   {1, 1, 1, 1, 1},
   {1, 1, 1, 1, 1},
   {1, 1, 1, 1, 1},
-  {0, 1, 1, 1, 0}
+  {1, 1, 1, 1, 1},
+  {1, 1, 1, 1, 1}
 };
 
 static const int kernelWidth = 5, kernelHeight = 5;
@@ -157,7 +157,8 @@ int main(int argc, char** argv) {
   //--------- Process 2: YUV Masking
   float *deviceCBMaskOutputImageData;
   unsigned int *deviceCbBins;
-  unsigned int *histogramSum;
+  unsigned int *deviceCbHistogramSum;
+  unsigned int *deviceGreyHistogramSum;
   float *deviceGrayOmega;
   float *deviceCbOmega;
   float *deviceGrayMu;
@@ -169,7 +170,8 @@ int main(int argc, char** argv) {
   
   gpuErrchk(cudaMalloc((void **)&deviceCBMaskOutputImageData, imageWidth * imageHeight * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceCbBins, NUM_BINS * sizeof(int)));
-  gpuErrchk(cudaMalloc((void **)&histogramSum, sizeof(int)));
+  gpuErrchk(cudaMalloc((void **)&deviceCbHistogramSum, sizeof(int)));
+  gpuErrchk(cudaMalloc((void **)&deviceGreyHistogramSum, sizeof(int)));
   gpuErrchk(cudaMalloc((void **)&deviceGrayOmega, NUM_BINS * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceCbOmega, NUM_BINS * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceGrayMu, NUM_BINS * sizeof(float)));
@@ -284,29 +286,31 @@ int main(int argc, char** argv) {
 #elif defined(USE_STREAMING)
   cudaStreamSynchronize(colorspaceStream);
 #endif
-  /*
+  
   //--------- Process 1: Greyscale Conversion, done previously
 
   
   //--------- Process 2: Greyscale Masking
 #ifdef USE_STREAMING
-  histogramKernel<<<dimGridHisto, dimBlockHisto, 0, grayscaleStream>>>(deviceGreyscaleOutputImageData, deviceGreyBins, imageWidth * imageHeight); //implemented
+  histogramKernel<<<dimGridHisto, dimBlockHisto, 0, grayscaleStream>>>(deviceGreyscaleOutputImageData, deviceGreyBins, imageWidth * imageHeight, true); //implemented
 #else
-  histogramKernel<<<dimGridHisto, dimBlockHisto>>>(deviceGreyscaleOutputImageData, deviceGreyBins, imageWidth * imageHeight); 
+  histogramKernel<<<dimGridHisto, dimBlockHisto>>>(deviceGreyscaleOutputImageData, deviceGreyBins, imageWidth * imageHeight, true); 
+#endif
+
+histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceGreyBins, deviceGreyHistogramSum);
+
+  //--------- Process 2: Greyscale Masking
+#ifdef USE_STREAMING
+  cumSumOne<<<dimGridCumSum, dimBlockCumSum, 0, grayscaleStream>>>(deviceGreyBins, deviceGrayOmega, imageWidth * imageHeight, deviceGreyHistogramSum); //pending
+#else
+  cumSumOne<<<dimGridCumSum, dimBlockCumSum>>>(deviceGreyBins, deviceGrayOmega, imageWidth * imageHeight, deviceGreyHistogramSum);
 #endif
   
   //--------- Process 2: Greyscale Masking
 #ifdef USE_STREAMING
-  cumSumOne<<<dimGridCumSum, dimBlockCumSum, 0, grayscaleStream>>>(deviceGreyBins, deviceGrayOmega, imageWidth * imageHeight); //pending
+  cumSumTwo<<<dimGridCumSum, dimBlockCumSum, 0, grayscaleStream>>>(deviceGreyBins, deviceGrayMu, imageWidth * imageHeight, deviceGreyHistogramSum); //pending
 #else
-  cumSumOne<<<dimGridCumSum, dimBlockCumSum>>>(deviceGreyBins, deviceGrayOmega, imageWidth * imageHeight);
-#endif
-  
-  //--------- Process 2: Greyscale Masking
-#ifdef USE_STREAMING
-  cumSumTwo<<<dimGridCumSum, dimBlockCumSum, 0, grayscaleStream>>>(deviceGreyBins, deviceGrayMu, imageWidth * imageHeight); //pending
-#else
-  cumSumTwo<<<dimGridCumSum, dimBlockCumSum>>>(deviceGreyBins, deviceGrayMu, imageWidth * imageHeight);
+  cumSumTwo<<<dimGridCumSum, dimBlockCumSum>>>(deviceGreyBins, deviceGrayMu, imageWidth * imageHeight, deviceGreyHistogramSum);
 #endif
   
   //--------- Process 2: Greyscale Masking
@@ -324,9 +328,9 @@ int main(int argc, char** argv) {
   
   //--------- Process 2: Greyscale Masking
 #ifdef USE_STREAMING
-  maskGeneration<<<dimGridMasking, dimBlockMasking, 0, grayscaleStream>>>(deviceGreyscaleOutputImageData, deviceGreyMaskOutputImageData, deviceGrayThreshold, imageWidth, imageHeight, 1);
+  maskGeneration<<<dimGridMasking, dimBlockMasking, 0, grayscaleStream>>>(deviceGreyscaleOutputImageData, deviceGreyMaskOutputImageData, deviceGrayThreshold, imageWidth, imageHeight, 1, true);
 #else
-  maskGeneration<<<dimGridMasking, dimBlockMasking>>>(deviceGreyscaleOutputImageData, deviceGreyMaskOutputImageData, deviceGrayThreshold, imageWidth, imageHeight, 1);
+  maskGeneration<<<dimGridMasking, dimBlockMasking>>>(deviceGreyscaleOutputImageData, deviceGreyMaskOutputImageData, deviceGrayThreshold, imageWidth, imageHeight, 1, true);
 #endif
 
   //--------- Process 4: Light Mask Erosion
@@ -341,7 +345,7 @@ int main(int argc, char** argv) {
   maskErosion<<<dimGridErosion, dimBlockErosion, 0, grayscaleStream>>>(deviceErodedShadow, deviceGreyMaskOutputImageData, deviceStrel, imageWidth, imageHeight, false);
 #else
   maskErosion<<<dimGridErosion, dimBlockErosion>>>(deviceErodedShadow, deviceGreyMaskOutputImageData, deviceStrelShadow, imageWidth, imageHeight, false);
-#endif*/
+#endif
 
 //START HERE
 // Erosion images
@@ -362,26 +366,26 @@ cudaEventRecord(astartEvent, 0);
 
   //--------- Process 2: YUV Masking
 #ifdef USE_STREAMING
-  histogramKernel<<<dimGridHisto, dimBlockHisto, 0, yuvStream>>>(deviceYUVOutputImageData, deviceCbBins, imageWidth * imageHeight); //implemented
+  histogramKernel<<<dimGridHisto, dimBlockHisto, 0, yuvStream>>>(deviceYUVOutputImageData, deviceCbBins, imageWidth * imageHeight, false); //implemented
 #else
-  histogramKernel<<<dimGridHisto, dimBlockHisto>>>(deviceYUVOutputImageData, deviceCbBins, imageWidth * imageHeight);
+  histogramKernel<<<dimGridHisto, dimBlockHisto>>>(deviceYUVOutputImageData, deviceCbBins, imageWidth * imageHeight, false);
 #endif
 
-histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, histogramSum);
+histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbHistogramSum);
 
 
   //--------- Process 2: YUV Masking
 #ifdef USE_STREAMING
-  cumSumOne<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight, histogramSum);
+  cumSumOne<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight, deviceCbHistogramSum);
 #else
-  cumSumOne<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight, histogramSum);
+  cumSumOne<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbOmega, imageWidth * imageHeight, deviceCbHistogramSum);
 #endif
 
   //--------- Process 2: YUV Masking
 #ifdef USE_STREAMING
-  cumSumTwo<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight, histogramSum);
+  cumSumTwo<<<dimGridCumSum, dimBlockCumSum, 0, yuvStream>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight, deviceCbHistogramSum);
 #else
-  cumSumTwo<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight, histogramSum);
+  cumSumTwo<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbMu, imageWidth * imageHeight, deviceCbHistogramSum);
 #endif
 
   //--------- Process 2: YUV Masking
@@ -400,9 +404,9 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, histogramSum
 
   //--------- Process 2: YUV Masking
 #ifdef USE_STREAMING
-  maskGeneration<<<dimGridMasking, dimBlockMasking, 0, yuvStream>>>(deviceYUVOutputImageData, deviceCBMaskOutputImageData, deviceCbThreshold, imageWidth, imageHeight, 0);
+  maskGeneration<<<dimGridMasking, dimBlockMasking, 0, yuvStream>>>(deviceYUVOutputImageData, deviceCBMaskOutputImageData, deviceCbThreshold, imageWidth, imageHeight, 0, false);
 #else
-  maskGeneration<<<dimGridMasking, dimBlockMasking>>>(deviceYUVOutputImageData, deviceCBMaskOutputImageData, deviceCbThreshold, imageWidth, imageHeight, 0);
+  maskGeneration<<<dimGridMasking, dimBlockMasking>>>(deviceYUVOutputImageData, deviceCBMaskOutputImageData, deviceCbThreshold, imageWidth, imageHeight, 0, false);
 #endif
 
   //--------- Process 3: Smoothing

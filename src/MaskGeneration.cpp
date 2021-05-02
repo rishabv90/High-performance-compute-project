@@ -38,12 +38,17 @@
 #define HISTOGRAM_VERSION 0	// Control which version is implemented
 
 #if HISTOGRAM_VERSION == 0
-__global__ void histogramKernel(float *input, unsigned int *bins, unsigned int num_elements) {
+__global__ void histogramKernel(float *input, unsigned int *bins, unsigned int num_elements, bool grey) {
     int i = blockIdx.x * blockDim.x + threadIdx.x; //Get initial index based on thread id
     int stride = blockDim.x * gridDim.x; //Get stride value
     //printf("\r\n%d\r\n", (int)(input[i * 3 + 1] * 255));
+    int index = 0;
     while(i < num_elements){ //Iterate over elements that this thread will process and increment histogram accordingly
-        atomicAdd(&(bins[(int)(input[i * 3 + 1] * 255)]),1);
+        index = i;
+        if(!grey){
+            index = i * 3 + 1;;
+        }
+        atomicAdd(&(bins[(int)(input[index] * 255)]),1);
         i += stride;
     }
 }
@@ -232,20 +237,16 @@ __global__ void argmax(float* retId, float* input) {
 #define MASK_GENERATION_VERSION 0	// Control which version is implemented
 
 #if MASK_GENERATION_VERSION == 0
-__global__ void maskGeneration(float* input, float* output, float* threshold, int width, int height, int subtractVal) {
+__global__ void maskGeneration(float* input, float* output, float* threshold, int width, int height, int subtractVal, bool grey) {
 	unsigned int col = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int row = blockIdx.y * blockDim.y + threadIdx.y;
     float thresholdValue = isnan(*threshold) ? 0 : *threshold;
-    if(col >= 0 && col < width && row >= 0 && row < height){
-    output[row * width + col] = input[(row * width + col) * 3 + 1] > thresholdValue ? 1 : 0;
-    /*if(col == 0 && row == 0){
-    printf("\r\nThreshold: %f\r\n",*threshold);
-    printf("\r\nSubtract value: %f\r\n",subtractVal);
+    int index = row * width + col;
+    if(!grey){
+        index = (row * width + col) * 3 + 1;
     }
-    if(output[row * width + col] == 0){
-    printf("\r\ninput[%d,%d] %f\r\n",col,row, input[(row * width + col) * 3 + 1]);
-    printf("\r\noutput[%d,%d] %f\r\n",col,row, output[row * width + col]);
-    }*/
+    if(col >= 0 && col < width && row >= 0 && row < height){
+    output[row * width + col] = input[index] > thresholdValue ? (grey?0:1) : (grey?1:0);
     }
 }
 #endif // MASK_GENERATION_VERSION
