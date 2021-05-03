@@ -17,6 +17,10 @@ if(x < width && y < height){
 	float r = rgbImage[rgbOffset];
 	float g = rgbImage[rgbOffset + 1];
 	float b = rgbImage[rgbOffset + 2];
+
+	redData[grayOffset] = r;
+	greenData[grayOffset] = g;
+	blueData[grayOffset] = b;
 	
 
 	//color invariance image calculations

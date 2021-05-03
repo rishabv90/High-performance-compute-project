@@ -47,6 +47,52 @@ static const float hostKernelData[kernelWidth][kernelHeight] = {
   {0.04, 0.04, 0.04, 0.04, 0.04}
 };
 
+void sumProc5Host(float* sum_input, unsigned int size, float* totalSum){
+	// Set up number of threads and blocks
+	unsigned int blockSize = 1024; 
+	unsigned int maxElementsPerBlock = blockSize * 2; // due to binary tree nature of algorithm
+
+	unsigned int gridSize = 0;
+	if (size <= maxElementsPerBlock)
+	{
+		gridSize = (unsigned int)std::ceil(float(size) / float(maxElementsPerBlock));
+	}
+	else
+	{
+		gridSize = size / maxElementsPerBlock;
+		if (size % maxElementsPerBlock != 0)
+			gridSize++;
+	}
+
+	// Allocate memory for array of total sums produced by each block
+	// Array length must be the same as number of blocks / grid size
+	float* deviceBlockSums;
+	gpuErrchk(cudaMalloc(&deviceBlockSums, sizeof(float) * gridSize));
+	gpuErrchk(cudaMemset(deviceBlockSums, 0, sizeof(float) * gridSize));
+
+	// Sum data allocated for each block
+	sumProc5<<<gridSize, blockSize, sizeof(float) * maxElementsPerBlock>>>(deviceBlockSums, sum_input, size);
+
+	// Sum each block's total sums (to get global total sum)
+	// Use basic implementation if number of total sums is <= 2048
+	// Else, recurse on this same function
+	if (gridSize <= maxElementsPerBlock)
+	{
+		gpuErrchk(cudaMemset(totalSum, 0, sizeof(float)));
+		sumProc5<<<1, blockSize, sizeof(float) * maxElementsPerBlock>>>(totalSum, deviceBlockSums, gridSize);
+	}
+	else
+	{
+		float* sum_input_block_sums;
+		gpuErrchk(cudaMalloc(&sum_input_block_sums, sizeof(float) * gridSize));
+		gpuErrchk(cudaMemcpy(sum_input_block_sums, deviceBlockSums, sizeof(float) * gridSize, cudaMemcpyDeviceToDevice));
+		sumProc5Host(sum_input_block_sums, gridSize, totalSum);
+		gpuErrchk(cudaFree(sum_input_block_sums));
+	}
+
+	gpuErrchk(cudaFree(deviceBlockSums));
+}
+
 //-------------------------------------------------
 //---------------- MAIN FUNCTION:
 	// Arguments:
@@ -214,6 +260,16 @@ int main(int argc, char** argv) {
   float *deviceLightRedArray;
   float *deviceLightGreenArray;
   float *deviceLightBlueArray;
+  //Sums
+  float *deviceErodedShadowSum;
+  float *deviceErodedLightSum;
+  float *deviceShadowRedArraySum;
+  float *deviceShadowGreenArraySum;
+  float *deviceShadowBlueArraySum;
+  float *deviceLightRedArraySum;
+  float *deviceLightGreenArraySum;
+  float *deviceLightBlueArraySum;
+  //
   float *deviceResultImageData;
   
   gpuErrchk(cudaMalloc((void **)&deviceShadowRedArray, imageHeight * imageWidth * sizeof(float)));
@@ -222,6 +278,16 @@ int main(int argc, char** argv) {
   gpuErrchk(cudaMalloc((void **)&deviceLightRedArray, imageHeight * imageWidth * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceLightGreenArray, imageHeight * imageWidth * sizeof(float)));
   gpuErrchk(cudaMalloc((void **)&deviceLightBlueArray, imageHeight * imageWidth * sizeof(float)));
+
+  gpuErrchk(cudaMalloc((void **)&deviceShadowRedArraySum, sizeof(float)));
+  gpuErrchk(cudaMalloc((void **)&deviceShadowGreenArraySum, sizeof(float)));
+  gpuErrchk(cudaMalloc((void **)&deviceShadowBlueArraySum, sizeof(float)));
+  gpuErrchk(cudaMalloc((void **)&deviceLightRedArraySum, sizeof(float)));
+  gpuErrchk(cudaMalloc((void **)&deviceLightGreenArraySum, sizeof(float)));
+  gpuErrchk(cudaMalloc((void **)&deviceLightBlueArraySum,  sizeof(float)));
+  gpuErrchk(cudaMalloc((void **)&deviceErodedShadowSum,  sizeof(float)));
+  gpuErrchk(cudaMalloc((void **)&deviceErodedLightSum,  sizeof(float)));
+  
   gpuErrchk(cudaMalloc((void **)&deviceResultImageData, imageHeight * imageWidth * imageChannels * sizeof(float)));
 
 
@@ -472,54 +538,33 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbHist
   map1Proc5<<<dimGridYUVConversion, dimBlockYUVConversion>>>(redData, greenData, blueData, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, imageWidth, imageHeight);
 #endif
   
-    //sum
-    int size = imageWidth * imageHeight;
-    int maxThreadsPerBlock = 1024;
-    int maxThreadsPerBlock2 = maxThreadsPerBlock*2;
-    int blocks = ((size - 1) / maxThreadsPerBlock2) + 1;
+unsigned int size = imageHeight * imageWidth;
 
-#ifdef USE_STREAMING
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float), resultStream>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#else
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float)>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#endif
-    size = blocks;
-    blocks = ((blocks-1) / maxThreadsPerBlock2) + 1;
-    if(size > maxThreadsPerBlock2){
-#ifdef USE_STREAMING
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float), resultStream>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#else
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float)>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#endif
-      size = blocks;
-      blocks = ((blocks-1) / maxThreadsPerBlock2) + 1;
-#ifdef USE_STREAMING
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float), resultStream>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#else
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float)>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#endif
-    }
-    else{
+sumProc5Host(deviceErodedShadow, size, deviceErodedShadowSum);
+sumProc5Host(deviceErodedLight, size, deviceErodedLightSum);
+sumProc5Host(deviceShadowRedArray, size, deviceShadowRedArraySum);
+sumProc5Host(deviceShadowGreenArray, size, deviceShadowGreenArraySum);
+sumProc5Host(deviceShadowBlueArray, size, deviceShadowBlueArraySum);
+sumProc5Host(deviceLightRedArray, size, deviceLightRedArraySum);
+sumProc5Host(deviceLightGreenArray, size, deviceLightGreenArraySum);
+sumProc5Host(deviceLightBlueArray, size, deviceLightBlueArraySum);
 
-#ifdef USE_STREAMING
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float), resultStream>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#else
-    sumProc5<<<blocks, maxThreadsPerBlock, maxThreadsPerBlock*8*sizeof(float)>>>(deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, size);//in fist par deviceGreyscaleOutputImageData - test
-#endif
+//
 
-    }
+//Perform sums
+
 	
 #ifdef USE_STREAMING
-  smallCalc<<<3,1, 0, resultStream>>>(deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedLight, deviceErodedShadow);
+  smallCalc<<<3,1, 0, resultStream>>>(deviceShadowRedArraySum, deviceShadowGreenArraySum, deviceShadowBlueArraySum, deviceLightRedArraySum, deviceLightGreenArraySum, deviceLightBlueArraySum, deviceErodedLightSum, deviceErodedShadowSum);
 #else
-  smallCalc<<<3,1>>>(deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, deviceErodedLight, deviceErodedShadow);
+  smallCalc<<<3,1>>>(deviceShadowRedArraySum, deviceShadowGreenArraySum, deviceShadowBlueArraySum, deviceLightRedArraySum, deviceLightGreenArraySum, deviceLightBlueArraySum, deviceErodedLightSum, deviceErodedShadowSum);
 #endif
 
 
 #ifdef USE_STREAMING  
-  proc5<<<dimGridYUVConversion, dimBlockYUVConversion, 0, resultStream>>>(redData, greenData, blueData, deviceResultImageData, deviceSmoothOutputImageData, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, imageWidth, imageHeight);
+  proc5<<<dimGridYUVConversion, dimBlockYUVConversion, 0, resultStream>>>(redData, greenData, blueData, deviceResultImageData, deviceSmoothOutputImageData, deviceShadowRedArraySum, deviceShadowGreenArraySum, deviceShadowBlueArraySum, imageWidth, imageHeight);
 #else
-  proc5<<<dimGridYUVConversion, dimBlockYUVConversion>>>(redData, greenData, blueData, deviceResultImageData, deviceSmoothOutputImageData, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, imageWidth, imageHeight);
+  proc5<<<dimGridYUVConversion, dimBlockYUVConversion>>>(redData, greenData, blueData, deviceResultImageData, deviceSmoothOutputImageData, deviceShadowRedArraySum, deviceShadowGreenArraySum, deviceShadowBlueArraySum, imageWidth, imageHeight);
 #endif
 	
   
