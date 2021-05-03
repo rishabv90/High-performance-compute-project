@@ -30,7 +30,7 @@ float* deviceLightGreenArray, float* deviceLightBlueArray, float* deviceErodedLi
 		float litavg_red = deviceLightRedArray[0] / deviceErodedLight[0];
 
 		deviceShadowRedArray[0] = litavg_red / shadowavg_red - 1; //ratio red
-		printf("\r\nred ratio: %f\r\n", deviceShadowRedArray[0]);
+
 	}
 	else if(x == 1){
 		float shadowavg_green = deviceShadowGreenArray[0] / deviceErodedShadow[0];

@@ -10,7 +10,7 @@
  * Otherwise, the pixel is deleted (set to 0)
  */
 
-#define EROSION_VERSION 2
+#define EROSION_VERSION 1
 
 #if EROSION_VERSION==1
 
@@ -67,7 +67,7 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
 #define TILE_DIM 16
 #define MASK_WIDTH 5
 #define MASK_RADIUS MASK_WIDTH/2
-#define PADDED_DIM (TILE_DIM + MASK_WIDTH - 1)
+#define PADDED_DIM (TILE_DIM + MASK_WIDTH)
 
 /*
  * Version 2:
@@ -77,59 +77,60 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
 
 __global__ void maskErosion(float* erodedMask, float* inputMask, float* structuralElement, int imageWidth, int imageHeight, bool doLightMask) {
   
-   __shared__ float sharedInputMask[PADDED_DIM][PADDED_DIM];
+	__shared__ float sharedInputMask[PADDED_DIM][PADDED_DIM];  //block of image in shared memory
 
-    int ty = threadIdx.y;
-    int tx = threadIdx.x;
+	// allocation in shared memory of image blocks
+ 		int dest = threadIdx.y * TILE_DIM + threadIdx.x;
+ 		int destY = dest/PADDED_DIM;     //row of shared memory
+ 		int destX = dest%PADDED_DIM;		//col of shared memory
+ 		int srcY = blockIdx.y *TILE_DIM + destY - MASK_RADIUS; // index to fetch data from input image
+ 		int srcX = blockIdx.x *TILE_DIM + destX - MASK_RADIUS; // index to fetch data from input image
+ 		int src = (srcY *imageWidth +srcX);   // index of input image
+ 		if(srcY>= 0 && srcY < imageHeight && srcX>=0 && srcX < imageWidth)
+ 			sharedInputMask[destY][destX] = inputMask[src];  // copy element of image in shared memory
+ 		else
+ 			sharedInputMask[destY][destX] = 0;
+ 		dest = threadIdx.y * TILE_DIM+ threadIdx.x + TILE_DIM * TILE_DIM;
+ 		destY = dest/PADDED_DIM;
+		destX = dest%PADDED_DIM;
+		srcY = blockIdx.y *TILE_DIM + destY - MASK_RADIUS;
+		srcX = blockIdx.x *TILE_DIM + destX - MASK_RADIUS;
+		src = (srcY *imageWidth +srcX);
+		if(destY < PADDED_DIM){
+			if(srcY>= 0 && srcY < imageHeight && srcX>=0 && srcX < imageWidth)
+				sharedInputMask[destY][destX] = inputMask[src];
+			else
+				sharedInputMask[destY][destX] = 0;
+		}
+
+ 		__syncthreads();
 
 
-    int row_o = blockIdx.y * TILE_DIM + ty;
-    int col_o = blockIdx.x * TILE_DIM + tx;
-
-
-    int row_i = row_o - MASK_RADIUS;
-    int col_i = col_o - MASK_RADIUS;
-
-    //in of img size
-    if((row_i >= 0) && (row_i < imageHeight) && (col_i >= 0) && (col_i < imageWidth) ){
-
-        float current_value = inputMask[ row_i * imageWidth + col_i];
-        if(doLightMask){
-            current_value = current_value == 0 ? 0 : 1;
-        }
-        sharedInputMask[ty][tx] = current_value;
-
-    }
-    else{
-
-        sharedInputMask[ty][tx] = 0;
-
-    }
-    __syncthreads();
-
-    bool keepPixel = true;
-
-    if( ty < TILE_DIM && tx < TILE_DIM ){
-
-        for(int i = 0; i < MASK_RADIUS; i++) {
-            for(int j = 0; j < MASK_RADIUS; j++) {
-
-                if(sharedInputMask[i+ty][j+tx] != structuralElement[i * MASK_WIDTH + j]){
-                    keepPixel == false;
+ 		//compute kernel convolution
+ 		int y, x;
+        bool keepPixel = true;
+ 		for (y= 0; y < MASK_WIDTH; y++){
+ 			for(x = 0; x<MASK_WIDTH; x++){
+ 				//accum += sharedInputMask[threadIdx.y + y][threadIdx.x + x] *structuralElement[y * MASK_WIDTH + x];
+                 float current_value = sharedInputMask[threadIdx.y + y][threadIdx.x + x];
+                 if(doLightMask){
+                      current_value = current_value == 0 ? 1 : 0;
+                  }
+                if(current_value != structuralElement[y * MASK_WIDTH + x]){
+                    keepPixel = false;
                     break;
                 }
-            }
-            
-          if(!keepPixel){
-              break;
-          }
+             }
+             if(!keepPixel){
+                 break;
+             }
+         }
 
-
-        }
-        if(row_o < imageHeight && col_o < imageWidth)
-                erodedMask[row_o * imageWidth + col_o] = keepPixel ? (doLightMask ? (inputMask[row_o * imageWidth + col_o] == 0 ? 1 : 0) : inputMask[row_o * imageWidth + col_o]) : 0;
-
-        }
+ 		y = blockIdx.y * TILE_DIM + threadIdx.y;
+ 		x = blockIdx.x * TILE_DIM + threadIdx.x;
+ 		if(y < imageHeight && x < imageWidth)
+ 			erodedMask[(y * imageWidth + x)] = keepPixel ? (doLightMask ? (sharedInputMask[threadIdx.y + MASK_RADIUS][threadIdx.x + MASK_RADIUS] == 0 ? 1 : 0) : sharedInputMask[threadIdx.y + MASK_RADIUS][threadIdx.x + MASK_RADIUS]) : 0;
+ 		__syncthreads();
      }
 #endif
 
@@ -148,59 +149,61 @@ __global__ void maskErosion(float* erodedMask, float* inputMask, float* structur
 
 __global__ void maskErosion(float* erodedMask, float* inputMask, const float* __restrict__ structuralElement, int imageWidth, int imageHeight, bool doLightMask) {
 
-    __shared__ float sharedInputMask[PADDED_DIM][PADDED_DIM];
+	__shared__ float sharedInputMask[PADDED_DIM][PADDED_DIM];  //block of image in shared memory
 
-    int ty = threadIdx.y;
-    int tx = threadIdx.x;
+	// allocation in shared memory of image blocks
+ 		int dest = threadIdx.y * TILE_DIM + threadIdx.x;
+ 		int destY = dest/PADDED_DIM;     //row of shared memory
+ 		int destX = dest%PADDED_DIM;		//col of shared memory
+ 		int srcY = blockIdx.y *TILE_DIM + destY - MASK_RADIUS; // index to fetch data from input image
+ 		int srcX = blockIdx.x *TILE_DIM + destX - MASK_RADIUS; // index to fetch data from input image
+ 		int src = (srcY *imageWidth +srcX);   // index of input image
+ 		if(srcY>= 0 && srcY < imageHeight && srcX>=0 && srcX < imageWidth)
+ 			sharedInputMask[destY][destX] = inputMask[src];  // copy element of image in shared memory
+ 		else
+ 			sharedInputMask[destY][destX] = 0;
+ 		dest = threadIdx.y * TILE_DIM+ threadIdx.x + TILE_DIM * TILE_DIM;
+ 		destY = dest/PADDED_DIM;
+		destX = dest%PADDED_DIM;
+		srcY = blockIdx.y *TILE_DIM + destY - MASK_RADIUS;
+		srcX = blockIdx.x *TILE_DIM + destX - MASK_RADIUS;
+		src = (srcY *imageWidth +srcX);
+		if(destY < PADDED_DIM){
+			if(srcY>= 0 && srcY < imageHeight && srcX>=0 && srcX < imageWidth)
+				sharedInputMask[destY][destX] = inputMask[src];
+			else
+				sharedInputMask[destY][destX] = 0;
+		}
+
+ 		__syncthreads();
 
 
-    int row_o = blockIdx.y * TILE_DIM + ty;
-    int col_o = blockIdx.x * TILE_DIM + tx;
-
-
-    int row_i = row_o - MASK_RADIUS;
-    int col_i = col_o - MASK_RADIUS;
-
-    //in of img size
-    if((row_i >= 0) && (row_i < imageHeight) && (col_i >= 0) && (col_i < imageWidth) ){
-
-        float current_value = inputMask[ row_i * imageWidth + col_i];
-        if(doLightMask){
-            current_value = current_value == 0 ? 0 : 1;
-        }
-        sharedInputMask[ty][tx] = current_value;
-
-    }
-    else{
-
-        sharedInputMask[ty][tx] = 0;
-
-    }
-    __syncthreads();
-
-    bool keepPixel = true;
-
-    if( ty < TILE_DIM && tx < TILE_DIM ){
-
-        for(int i = 0; i < MASK_RADIUS; i++) {
-            for(int j = 0; j < MASK_RADIUS; j++) {
-
-                if(sharedInputMask[i+ty][j+tx] != structuralElement[i * MASK_WIDTH + j]){
-                    keepPixel == false;
+ 		//compute kernel convolution
+ 		int y, x;
+        bool keepPixel = true;
+ 		for (y= 0; y < MASK_WIDTH; y++){
+ 			for(x = 0; x<MASK_WIDTH; x++){
+ 				//accum += sharedInputMask[threadIdx.y + y][threadIdx.x + x] *structuralElement[y * MASK_WIDTH + x];
+                 float current_value = sharedInputMask[threadIdx.y + y][threadIdx.x + x];
+                 if(doLightMask){
+                      current_value = current_value == 0 ? 1 : 0;
+                  }
+                if(current_value != structuralElement[y * MASK_WIDTH + x]){
+                    keepPixel = false;
                     break;
                 }
-            }
-            
-          if(!keepPixel){
-              break;
-          }
+             }
+             if(!keepPixel){
+                 break;
+             }
+         }
 
+ 		y = blockIdx.y * TILE_DIM + threadIdx.y;
+ 		x = blockIdx.x * TILE_DIM + threadIdx.x;
+ 		if(y < imageHeight && x < imageWidth)
+ 			erodedMask[(y * imageWidth + x)] = keepPixel ? (doLightMask ? (sharedInputMask[threadIdx.y + MASK_RADIUS][threadIdx.x + MASK_RADIUS] == 0 ? 1 : 0) : sharedInputMask[threadIdx.y + MASK_RADIUS][threadIdx.x + MASK_RADIUS]) : 0;
+ 		__syncthreads();
 
-        }
-        if(row_o < imageHeight && col_o < imageWidth)
-                erodedMask[row_o * imageWidth + col_o] = keepPixel ? (doLightMask ? (inputMask[row_o * imageWidth + col_o] == 0 ? 1 : 0) : inputMask[row_o * imageWidth + col_o]) : 0;
-
-        }
 }
 
 #endif

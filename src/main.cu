@@ -340,11 +340,25 @@ int main(int argc, char** argv) {
   dim3 dimGridColorInvariance((imageWidth - 1) / 16 + 1, (imageHeight - 1)/16 + 1, 1);
   dim3 dimBlockColorInvariance(16, 16, 1);
 
+  cudaEvent_t astartEvent, astopEvent;
+  float aelapsedTime;
+  cudaEventCreate(&astartEvent);
+  cudaEventCreate(&astopEvent);
+  cudaEventRecord(astartEvent, 0);
+
 #ifdef USE_STREAMING
   YUVandCItoGray<<<dimGridColorInvariance, dimBlockColorInvariance, 0, colorspaceStream>>>(deviceGreyscaleOutputImageData, deviceYUVOutputImageData, deviceInputImageData, redData, greenData, blueData, imageWidth, imageHeight); //implemented
 #else
   YUVandCItoGray<<<dimGridColorInvariance, dimBlockColorInvariance>>>(deviceGreyscaleOutputImageData, deviceYUVOutputImageData, deviceInputImageData, redData, greenData, blueData, imageWidth, imageHeight);
+
+
+
 #endif
+cudaDeviceSynchronize();
+cudaEventRecord(astopEvent, 0);
+cudaEventSynchronize(astopEvent);
+cudaEventElapsedTime(&aelapsedTime, astartEvent, astopEvent);
+printf("Total execution time (ms) %f for YUVandCItoGray \n",aelapsedTime);
   // Wait until this stream is done as all other streams depend on the colorspace transform
 #if defined(USE_STREAM_EVENTS) && defined(USE_STREAMING)
   cudaEventRecord(colorspaceCompleteEvent, colorspaceStream);
@@ -355,8 +369,14 @@ int main(int argc, char** argv) {
   
   //--------- Process 1: Greyscale Conversion, done previously
 
-  
+
+cudaEvent_t event1StartEvent, event1StopEvent;
+float event1ElapsedTime;
+cudaEventCreate(&event1StartEvent);
+cudaEventCreate(&event1StopEvent);
+cudaEventRecord(event1StartEvent, 0);
   //--------- Process 2: Greyscale Masking
+
 #ifdef USE_STREAMING
   histogramKernel<<<dimGridHisto, dimBlockHisto, 0, grayscaleStream>>>(deviceGreyscaleOutputImageData, deviceGreyBins, imageWidth * imageHeight, true); //implemented
 #else
@@ -398,38 +418,60 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceGreyBins, deviceGrey
 #else
   maskGeneration<<<dimGridMasking, dimBlockMasking>>>(deviceGreyscaleOutputImageData, deviceGreyMaskOutputImageData, deviceGrayThreshold, imageWidth, imageHeight, 1, true);
 #endif
+cudaDeviceSynchronize();
+cudaEventRecord(event1StopEvent, 0);
+cudaEventSynchronize(event1StopEvent);
+cudaEventElapsedTime(&event1ElapsedTime, event1StartEvent, event1StopEvent);
+printf("Total execution time (ms) %f for Greyscale Mask Generation \n",event1ElapsedTime);
 
+cudaEvent_t event2StartEvent, event2StopEvent;
+float event2ElapsedTime;
+cudaEventCreate(&event2StartEvent);
+cudaEventCreate(&event2StopEvent);
+cudaEventRecord(event2StartEvent, 0);
   //--------- Process 4: Light Mask Erosion
 #ifdef USE_STREAMING
   maskErosion<<<dimGridErosion, dimBlockErosion, 0, grayscaleStream>>>(deviceErodedLight, deviceGreyMaskOutputImageData, deviceStrel, imageWidth, imageHeight, true);
 #else
   maskErosion<<<dimGridErosion, dimBlockErosion>>>(deviceErodedLight, deviceGreyMaskOutputImageData, deviceStrelLight, imageWidth, imageHeight, true);
 #endif
-
+cudaDeviceSynchronize();
+cudaEventRecord(event2StopEvent, 0);
+cudaEventSynchronize(event2StopEvent);
+cudaEventElapsedTime(&event2ElapsedTime, event2StartEvent, event2StopEvent);
+printf("Total execution time (ms) %f for light erosion \n",event2ElapsedTime);
+cudaEvent_t event6StartEvent, event6StopEvent;
+float event6ElapsedTime;
+cudaEventCreate(&event6StartEvent);
+cudaEventCreate(&event6StopEvent);
+cudaEventRecord(event6StartEvent, 0);
   //--------- Process 4: Shadow Mask Erosion
 #ifdef USE_STREAMING  
   maskErosion<<<dimGridErosion, dimBlockErosion, 0, grayscaleStream>>>(deviceErodedShadow, deviceGreyMaskOutputImageData, deviceStrel, imageWidth, imageHeight, false);
 #else
   maskErosion<<<dimGridErosion, dimBlockErosion>>>(deviceErodedShadow, deviceGreyMaskOutputImageData, deviceStrelShadow, imageWidth, imageHeight, false);
 #endif
+cudaDeviceSynchronize();
+  cudaEventRecord(event6StopEvent, 0);
+  cudaEventSynchronize(event6StopEvent);
+  cudaEventElapsedTime(&event6ElapsedTime, event6StartEvent, event6StopEvent);
+  printf("Total execution time (ms) %f for shadow mask erosion \n",event6ElapsedTime);
 
-//START HERE
-// Erosion images
-cudaEvent_t astartEvent, astopEvent;
-float aelapsedTime;
-cudaEventCreate(&astartEvent);
-cudaEventCreate(&astopEvent);
-cudaEventRecord(astartEvent, 0);
 #if defined(USE_STREAM_EVENTS) && defined(USE_STREAMING)
   cudaEventRecord(grayscaleCompleteEvent, grayscaleStream);
   cudaStreamWaitEvent(yuvStream, colorspaceCompleteEvent, 0);
 #endif
+
   // YUV processing
   //--------- Process 1: YUV Conversion, done previously
   dim3 dimGridYUVConversion((imageWidth - 1) / 16 + 1, (imageHeight - 1)/16 + 1, 1);
   dim3 dimBlockYUVConversion(16, 16, 1);
 
-
+  cudaEvent_t event3StartEvent, event3StopEvent;
+  float event3ElapsedTime;
+  cudaEventCreate(&event3StartEvent);
+  cudaEventCreate(&event3StopEvent);
+  cudaEventRecord(event3StartEvent, 0);
   //--------- Process 2: YUV Masking
 #ifdef USE_STREAMING
   histogramKernel<<<dimGridHisto, dimBlockHisto, 0, yuvStream>>>(deviceYUVOutputImageData, deviceCbBins, imageWidth * imageHeight, false); //implemented
@@ -474,6 +516,11 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbHist
 #else
   maskGeneration<<<dimGridMasking, dimBlockMasking>>>(deviceYUVOutputImageData, deviceCBMaskOutputImageData, deviceCbThreshold, imageWidth, imageHeight, 0, false);
 #endif
+cudaDeviceSynchronize();
+  cudaEventRecord(event3StopEvent, 0);
+  cudaEventSynchronize(event3StopEvent);
+  cudaEventElapsedTime(&event3ElapsedTime, event3StartEvent, event3StopEvent);
+  printf("Total execution time (ms) %f for YUV Masking \n",event3ElapsedTime);
 
   //--------- Process 3: Smoothing
  /* dim3 dimGridSmoothing((imageWidth-1)/16 +1, (imageHeight-1)/16+1, 1);
@@ -486,6 +533,11 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbHist
   // 2D Shared Memory, Smoothing Kernel
   dim3 dimGridSmoothing((imageWidth * 2 - 1)/16 +1, (imageHeight * 2 -1)/16+1, 1);
   dim3 dimBlockSmoothing(16, 16, 1);
+  cudaEvent_t event4StartEvent, event4StopEvent;
+float event4ElapsedTime;
+cudaEventCreate(&event4StartEvent);
+cudaEventCreate(&event4StopEvent);
+cudaEventRecord(event4StartEvent, 0);
   smooth_kernel<<<dimGridSmoothing, dimBlockSmoothing, 0, yuvStream>>>(deviceCBMaskOutputImageData, deviceSmoothOutputImageData, deviceMaskData, 1, imageWidth, imageHeight);
 
   #elif SMOOTH_KERNEL_VERSION == 1
@@ -519,7 +571,11 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbHist
   smooth_kernel_global<<<dimGridSmoothing, dimBlockSmoothing>>>(deviceCBMaskOutputImageData, deviceSmoothOutputImageData, deviceMaskData, 1, imageWidth, imageHeight); 
   #endif
 #endif
-
+cudaDeviceSynchronize();
+  cudaEventRecord(event4StopEvent, 0);
+  cudaEventSynchronize(event4StopEvent);
+  cudaEventElapsedTime(&event4ElapsedTime, event4StartEvent, event4StopEvent);
+  printf("Total execution time (ms) %f for smooth kernel\n",event4ElapsedTime);
 
 #if defined(USE_STREAM_EVENTS) && defined(USE_STREAMING)
   cudaEventRecord(yuvCompleteEvent, yuvStream);
@@ -532,6 +588,11 @@ histogramSumKernel<<<dimGridCumSum, dimBlockCumSum>>>(deviceCbBins, deviceCbHist
 
   //--------- Process 5: Ratio & Final Image
   //PROC 5
+  cudaEvent_t event5StartEvent, event5StopEvent;
+  float event5ElapsedTime;
+  cudaEventCreate(&event5StartEvent);
+  cudaEventCreate(&event5StopEvent);
+  cudaEventRecord(event5StartEvent, 0);
 #ifdef USE_STREAMING
   map1Proc5<<<dimGridYUVConversion, dimBlockYUVConversion, 0, resultStream>>>(redData, greenData, blueData, deviceErodedShadow, deviceErodedLight, deviceShadowRedArray, deviceShadowGreenArray, deviceShadowBlueArray, deviceLightRedArray, deviceLightGreenArray, deviceLightBlueArray, imageWidth, imageHeight);
 #else
@@ -566,7 +627,11 @@ sumProc5Host(deviceLightBlueArray, size, deviceLightBlueArraySum);
 #else
   proc5<<<dimGridYUVConversion, dimBlockYUVConversion>>>(redData, greenData, blueData, deviceResultImageData, deviceSmoothOutputImageData, deviceShadowRedArraySum, deviceShadowGreenArraySum, deviceShadowBlueArraySum, imageWidth, imageHeight);
 #endif
-	
+cudaDeviceSynchronize();
+cudaEventRecord(event5StopEvent, 0);
+cudaEventSynchronize(event5StopEvent);
+cudaEventElapsedTime(&event5ElapsedTime, event5StartEvent, event5StopEvent);
+printf("Total execution time (ms) %f for result integration \n",event5ElapsedTime);
   
 
     //cudaDeviceSynchronize(); 
@@ -650,11 +715,6 @@ sumProc5Host(deviceLightBlueArray, size, deviceLightBlueArraySum);
 
   wbImage_t imgOutputShadowMaskErosion = wbImage_new(imageWidth, imageHeight, 1, hostOutputImageErodedShadow);
 
-  cudaDeviceSynchronize();
-  cudaEventRecord(astopEvent, 0);
-  cudaEventSynchronize(astopEvent);
-  cudaEventElapsedTime(&aelapsedTime, astartEvent, astopEvent);
-  printf("Total execution time (ms) %f for light mask erosion \n",aelapsedTime);
 
 
   // Output Image Path Strings
@@ -720,6 +780,15 @@ sumProc5Host(deviceLightBlueArray, size, deviceLightBlueArraySum);
   cudaFree(deviceLightRedArray);
   cudaFree(deviceLightGreenArray);
   cudaFree(deviceLightBlueArray);
+  
+  cudaFree(deviceShadowRedArraySum);
+  cudaFree(deviceShadowGreenArraySum);
+  cudaFree(deviceShadowBlueArraySum);
+  cudaFree(deviceLightRedArraySum);
+  cudaFree(deviceLightGreenArraySum);
+  cudaFree(deviceLightBlueArraySum);
+  cudaFree(deviceErodedLightSum);
+  cudaFree(deviceErodedShadowSum);
 
 	// Delete the Images
   wbImage_delete(inputImage);
